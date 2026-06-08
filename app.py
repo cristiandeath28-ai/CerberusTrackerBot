@@ -2,9 +2,8 @@ import telebot
 import json
 import os
 import threading
-import time
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 # ========== CONFIGURACIÓN ==========
 TOKEN = "8629922490:AAF5RjcD2d2jTqvphL9IWs14myHC11xdV98"
@@ -13,12 +12,9 @@ PRICE_MONTHLY = 8
 
 DATA_FILE = "users_data.json"
 
-# ========== INICIALIZAR BOT Y FLASK ==========
+# ========== INICIALIZAR ==========
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
-
-# Variable para controlar el webhook
-WEBHOOK_URL = None
 
 # ========== BASE DE DATOS ==========
 def load_data():
@@ -31,17 +27,14 @@ def save_data(data):
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-# ========== COMANDOS DEL BOT ==========
+# ========== COMANDOS ==========
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = str(message.from_user.id)
     data = load_data()
     
     if user_id not in data["users"]:
-        data["users"][user_id] = {
-            "wallets": [],
-            "suscripcion_hasta": None
-        }
+        data["users"][user_id] = {"wallets": [], "suscripcion_hasta": None}
         save_data(data)
     
     bot.reply_to(message, 
@@ -54,19 +47,7 @@ def start(message):
         f"/list - Ver wallets\n"
         f"/remove [dirección] - Eliminar wallet\n"
         f"/pagar [TXID] - Verificar pago\n"
-        f"/status - Ver suscripción\n"
-        f"/help - Ayuda",
-        parse_mode="Markdown")
-
-@bot.message_handler(commands=['help'])
-def help_command(message):
-    bot.reply_to(message,
-        f"❓ *AYUDA*\n\n"
-        f"1. Envía {PRICE_MONTHLY} USDT a `{USDT_WALLET}`\n"
-        f"2. Copia el TXID de la transacción\n"
-        f"3. Usa /pagar [TXID]\n"
-        f"4. Usa /add [dirección] para agregar wallets\n\n"
-        f"🔍 Ver TXID en: https://solscan.io",
+        f"/status - Ver suscripción",
         parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
@@ -76,13 +57,9 @@ def status(message):
     user_data = data["users"].get(user_id, {})
     expira = user_data.get("suscripcion_hasta")
     
-    if expira:
-        fecha_expira = datetime.fromisoformat(expira)
-        if fecha_expira > datetime.now():
-            dias = (fecha_expira - datetime.now()).days
-            bot.reply_to(message, f"✅ *Suscripción ACTIVA*\n📅 Vence en {dias} días", parse_mode="Markdown")
-        else:
-            bot.reply_to(message, f"❌ *Suscripción EXPIRADA*\n💰 Renueva por {PRICE_MONTHLY} USDT", parse_mode="Markdown")
+    if expira and datetime.fromisoformat(expira) > datetime.now():
+        dias = (datetime.fromisoformat(expira) - datetime.now()).days
+        bot.reply_to(message, f"✅ *Activa*\n📅 Vence en {dias} días", parse_mode="Markdown")
     else:
         bot.reply_to(message, f"❌ *Sin suscripción*\n💰 Paga {PRICE_MONTHLY} USDT a `{USDT_WALLET}`", parse_mode="Markdown")
 
@@ -90,177 +67,108 @@ def status(message):
 def add_wallet(message):
     user_id = str(message.from_user.id)
     data = load_data()
-    user_data = data["users"].get(user_id, {})
-    expira = user_data.get("suscripcion_hasta")
+    expira = data["users"].get(user_id, {}).get("suscripcion_hasta")
     
     if not expira or datetime.fromisoformat(expira) < datetime.now():
-        bot.reply_to(message, f"❌ *Necesitas suscripción activa*\n💰 Paga {PRICE_MONTHLY} USDT a `{USDT_WALLET}`", parse_mode="Markdown")
+        bot.reply_to(message, f"❌ *Necesitas suscripción*\n💰 Paga {PRICE_MONTHLY} USDT", parse_mode="Markdown")
         return
     
     partes = message.text.split()
     if len(partes) < 2:
-        bot.reply_to(message, "❌ Usa: /add [dirección_de_wallet]\nEjemplo: /add 7vBc6nZgQZqrBcRfC7tF3vVwQxZqUqRqQqRqQqR", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Usa: /add [dirección]")
         return
     
     direccion = partes[1]
     nombre = partes[2] if len(partes) > 2 else direccion[:8]
     
-    if len(direccion) < 32 or len(direccion) > 44:
-        bot.reply_to(message, "❌ Dirección inválida", parse_mode="Markdown")
-        return
-    
-    data["users"][user_id]["wallets"].append({
-        "address": direccion,
-        "name": nombre,
-        "fecha": datetime.now().isoformat()
-    })
+    data["users"][user_id]["wallets"].append({"address": direccion, "name": nombre})
     save_data(data)
-    
-    bot.reply_to(message, f"✅ *Wallet agregada*\n📌 {nombre}\n🔗 `{direccion[:10]}...{direccion[-6:]}`", parse_mode="Markdown")
+    bot.reply_to(message, f"✅ Wallet {nombre} agregada")
 
 @bot.message_handler(commands=['list'])
 def list_wallets(message):
     user_id = str(message.from_user.id)
-    data = load_data()
-    wallets = data["users"].get(user_id, {}).get("wallets", [])
+    wallets = load_data()["users"].get(user_id, {}).get("wallets", [])
     
     if not wallets:
-        bot.reply_to(message, "📋 *No tienes wallets*\nUsa /add para agregar", parse_mode="Markdown")
+        bot.reply_to(message, "📋 No hay wallets")
         return
     
-    mensaje = "📋 *Tus wallets:*\n\n"
+    msg = "📋 *Tus wallets:*\n"
     for i, w in enumerate(wallets, 1):
-        mensaje += f"{i}. *{w['name']}*\n   `{w['address'][:10]}...{w['address'][-6:]}`\n\n"
-    
-    bot.reply_to(message, mensaje, parse_mode="Markdown")
+        msg += f"{i}. {w['name']}\n"
+    bot.reply_to(message, msg, parse_mode="Markdown")
 
 @bot.message_handler(commands=['remove'])
 def remove_wallet(message):
     user_id = str(message.from_user.id)
     partes = message.text.split()
-    
     if len(partes) < 2:
-        bot.reply_to(message, "❌ Usa: /remove [nombre_o_dirección]", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Usa: /remove [nombre]")
         return
     
     busqueda = partes[1].lower()
     data = load_data()
     original = data["users"].get(user_id, {}).get("wallets", [])
-    
-    nuevas = [w for w in original if busqueda not in w["address"].lower() and busqueda not in w["name"].lower()]
+    nuevas = [w for w in original if busqueda not in w["name"].lower()]
     
     if len(nuevas) < len(original):
         data["users"][user_id]["wallets"] = nuevas
         save_data(data)
-        bot.reply_to(message, "✅ *Wallet eliminada*", parse_mode="Markdown")
+        bot.reply_to(message, "✅ Wallet eliminada")
     else:
-        bot.reply_to(message, "❌ *No se encontró*", parse_mode="Markdown")
+        bot.reply_to(message, "❌ No encontrada")
 
 @bot.message_handler(commands=['pagar'])
 def pagar(message):
     import requests
-    
     partes = message.text.split()
     if len(partes) < 2:
-        bot.reply_to(message, "❌ Usa: /pagar [TXID]", parse_mode="Markdown")
+        bot.reply_to(message, "❌ Usa: /pagar [TXID]")
         return
     
     txid = partes[1]
     user_id = str(message.from_user.id)
     
-    msg = bot.reply_to(message, "🔍 *Verificando transacción...*", parse_mode="Markdown")
+    msg = bot.reply_to(message, "🔍 Verificando...")
     
     try:
         url = f"https://public-api.solscan.io/transaction/{txid}"
-        response = requests.get(url, timeout=15)
+        r = requests.get(url, timeout=10)
         
-        if response.status_code == 200:
-            datos = response.json()
-            tx_info = str(datos).lower()
-            
-            if USDT_WALLET.lower() in tx_info:
-                data = load_data()
-                fecha_expiracion = datetime.now() + timedelta(days=30)
-                
-                if user_id not in data["users"]:
-                    data["users"][user_id] = {"wallets": [], "suscripcion_hasta": None}
-                
-                data["users"][user_id]["suscripcion_hasta"] = fecha_expiracion.isoformat()
-                save_data(data)
-                
-                bot.edit_message_text(
-                    f"✅ *¡PAGO CONFIRMADO!*\n\n"
-                    f"📅 Suscripción activa hasta: `{fecha_expiracion.strftime('%d/%m/%Y')}`",
-                    chat_id=msg.chat.id,
-                    message_id=msg.message_id,
-                    parse_mode="Markdown"
-                )
-            else:
-                bot.edit_message_text(
-                    f"❌ *Transacción no válida*\nNo se recibió pago a tu dirección.",
-                    chat_id=msg.chat.id,
-                    message_id=msg.message_id,
-                    parse_mode="Markdown"
-                )
+        if r.status_code == 200 and USDT_WALLET.lower() in str(r.json()).lower():
+            data = load_data()
+            fecha = datetime.now() + timedelta(days=30)
+            data["users"][user_id]["suscripcion_hasta"] = fecha.isoformat()
+            save_data(data)
+            bot.edit_message_text(f"✅ Pago confirmado. Activa hasta {fecha.strftime('%d/%m/%Y')}", msg.chat.id, msg.message_id)
         else:
-            bot.edit_message_text(
-                f"❌ *No se pudo verificar*\nVerifica en https://solscan.io/tx/{txid}",
-                chat_id=msg.chat.id,
-                message_id=msg.message_id,
-                parse_mode="Markdown"
-            )
+            bot.edit_message_text(f"❌ TXID no válido", msg.chat.id, msg.message_id)
     except Exception as e:
-        bot.edit_message_text(
-            f"❌ *Error:* {str(e)[:100]}",
-            chat_id=msg.chat.id,
-            message_id=msg.message_id,
-            parse_mode="Markdown"
-        )
+        bot.edit_message_text(f"❌ Error: {str(e)[:50]}", msg.chat.id, msg.message_id)
 
-# ========== ENDPOINTS PARA RENDER ==========
+# ========== WEBHOOK PARA RENDER ==========
 @app.route('/')
 def home():
     return "Bot funcionando ✅", 200
 
-@app.route('/health')
-def health():
-    return "OK", 200
-
 @app.route(f'/webhook/{TOKEN}', methods=['POST'])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
+        update = telebot.types.Update.de_json(request.get_data().decode('utf-8'))
         bot.process_new_updates([update])
         return '', 200
     return '', 403
 
-# ========== CONFIGURAR WEBHOOK ==========
-def set_webhook():
-    global WEBHOOK_URL
-    # Render asigna la variable de entorno RENDER_EXTERNAL_URL
-    WEBHOOK_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
-    
-    if WEBHOOK_URL:
-        webhook_url = f"{WEBHOOK_URL}/webhook/{TOKEN}"
-        bot.remove_webhook()
-        bot.set_webhook(url=webhook_url)
-        print(f"✅ Webhook configurado: {webhook_url}")
-    else:
-        print("⚠️ No se detectó RENDER_EXTERNAL_URL, usando polling...")
-        # Iniciar polling en un hilo separado
-        threading.Thread(target=bot.infinity_polling, daemon=True).start()
-
-# ========== INICIAR SERVIDOR ==========
+# ========== INICIAR ==========
 if __name__ == "__main__":
-    print("=" * 50)
-    print("🤖 BOT INICIADO EN MODO WEBHOOK")
-    print(f"💰 Wallet: {USDT_WALLET}")
-    print("=" * 50)
+    # Configurar webhook automáticamente en Render
+    webhook_url = os.environ.get('RENDER_EXTERNAL_URL', '')
+    if webhook_url:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{webhook_url}/webhook/{TOKEN}")
+        print(f"✅ Webhook: {webhook_url}")
     
-    # Configurar webhook
-    set_webhook()
-    
-    # Iniciar servidor Flask
+    print("🤖 Bot iniciado")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
