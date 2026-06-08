@@ -1,7 +1,3 @@
-python-telegram-bot==20.3
-python-dotenv==0.20.0
-httpx==0.27.0
-pytz==2024.1
-cachetools==4.2.2
+pyTelegramBotAPI==4.16.0
+Flask==3.0.0
 requests==2.31.0
-beautifulsoup4==4.12.3
