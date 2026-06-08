@@ -37,17 +37,26 @@ def start(message):
         data["users"][user_id] = {"wallets": [], "suscripcion_hasta": None}
         save_data(data)
     
-    bot.reply_to(message, 
+    bot.reply_to(message,
         f"🚀 *WALLET TRACKER BOT*\n\n"
-        f"💰 Precio: {PRICE_MONTHLY} USDT/mes\n"
-        f"🔗 Pagar a: `{USDT_WALLET}`\n\n"
-        f"📌 Comandos:\n"
+        f"💰 *Precio:* {PRICE_MONTHLY} USDT/mes\n"
+        f"🔗 *Pagar a:* `{USDT_WALLET}`\n\n"
+        f"📌 *Comandos:*\n"
         f"/start - Este mensaje\n"
         f"/add [dirección] - Agregar wallet\n"
         f"/list - Ver wallets\n"
         f"/remove [dirección] - Eliminar wallet\n"
         f"/pagar [TXID] - Verificar pago\n"
-        f"/status - Ver suscripción",
+        f"/status - Ver suscripción\n\n"
+        f"💵 *¿CÓMO PAGAR?*\n"
+        f"1️⃣ Puedes pagar desde *cualquier wallet o exchange* (Phantom, Binance, Solflare, Trust, etc.)\n"
+        f"2️⃣ Envía *{PRICE_MONTHLY} USDT* a la dirección de arriba\n"
+        f"3️⃣ Usa SOLO la red *SOLANA* (no Ethereum, no BSC)\n"
+        f"4️⃣ Después de pagar, copia el *TXID* (comprobante)\n"
+        f"5️⃣ Envía `/pagar TXID` al bot\n"
+        f"6️⃣ El bot activará tu suscripción por 30 días\n\n"
+        f"🔍 *Verifica tu pago:* https://solscan.io/account/{USDT_WALLET}\n\n"
+        f"❓ *¿Dudas?* Envía /help",
         parse_mode="Markdown")
 
 @bot.message_handler(commands=['status'])
